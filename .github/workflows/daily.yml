@@ -39,6 +39,8 @@ jobs:
 
       - name: Commit and push
         if: steps.gate.outputs.go == 'true'
+        env:
+          TZ: America/New_York # record commit times in Eastern, like commits from your PC
         run: |
           git config user.name "Electronukem"
           git config user.email "168210181+Electronukem@users.noreply.github.com"
