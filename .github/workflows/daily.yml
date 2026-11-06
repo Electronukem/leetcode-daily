@@ -1,0 +1,56 @@
+name: Daily LeetCode
+
+on:
+  schedule:
+    # Hourly checks, 6:37 AM-12:37 PM Eastern (cron is in UTC; this covers both EST and EDT).
+    # .github/scripts/random_time.py picks the day's actual time, 8:00-11:59 AM Eastern,
+    # and only that run downloads and commits.
+    - cron: "37 11-16 * * *"
+  workflow_dispatch: # "Run workflow" button: download right away, no random wait
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-leetcode # runs queue up instead of racing each other
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80 # the random wait can be up to ~65 minutes
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Wait for today's random time
+        id: gate
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "Manual run: skipping the random wait"
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            python3 .github/scripts/random_time.py
+          fi
+
+      - name: Download today's problem
+        if: steps.gate.outputs.go == 'true'
+        run: |
+          git pull --ff-only origin "$GITHUB_REF_NAME"  # pick up anything pushed while we waited
+          python3 daily.py --no-editorial
+
+      - name: Commit and push
+        if: steps.gate.outputs.go == 'true'
+        run: |
+          git config user.name "Electronukem"
+          git config user.email "168210181+Electronukem@users.noreply.github.com"
+          git add problems
+          if git diff --cached --quiet; then
+            echo "Nothing new to commit"
+            exit 0
+          fi
+          folder=$(git diff --cached --name-only | head -n1 | cut -d/ -f2)
+          git commit -m "Add $(head -n1 "problems/$folder/README.md" | sed 's/^# //')"
+          for attempt in 1 2 3; do
+            git push origin "HEAD:$GITHUB_REF_NAME" && exit 0
+            git pull --rebase origin "$GITHUB_REF_NAME"
+          done
+          exit 1
